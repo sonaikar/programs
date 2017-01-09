@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# File:        tools/sbin/modify_access
+#
+# Description: Tool wrapper for tools/sbin/modify_access.pl
+#
+TOOL=`basename $0`
+
+#
+# Default $TOOLS_DIRECTORY to /pdd/cvs
+#
+: ${TOOLS_DIRECTORY:="/pdd/cvs"}
+
+if [ ! -r "$TOOLS_DIRECTORY/sbin/${TOOL}.pl" ]
+then
+   echo
+   echo "ERROR ($TOOL): Cannot find required library,"
+   echo "      $TOOLS_DIRECTORY/sbin/${TOOL}.pl"
+   echo "      Is \$TOOLS_DIRECTORY set correctly?"
+   echo
+   exit 1
+fi
+
+if [ `uname | fgrep -c _NT` -eq 1 ]
+then
+   $TOOLS_DIRECTORY/ActivePerl/bin/perl $TOOLS_DIRECTORY/sbin/${TOOL}.pl "$@"
+else
+   if [ -r "/usr/bin/perl5" ]
+   then
+      /usr/bin/perl5 $TOOLS_DIRECTORY/sbin/${TOOL}.pl "$@"
+   else
+      perl $TOOLS_DIRECTORY/sbin/${TOOL}.pl "$@"
+   fi
+fi

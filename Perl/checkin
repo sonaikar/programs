@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# Description: Tool wrapper
+#
+TOOL=`basename $0`
+
+#
+# Default $TOOLS_DIRECTORY to /pdd/cvs
+#
+: ${TOOLS_DIRECTORY:="/pdd/cvs"}
+
+if [ ! -r "$TOOLS_DIRECTORY/lib/${TOOL}.pl" ]
+then
+   echo
+   echo "ERROR ($TOOL): Cannot find required library,"
+   echo "      $TOOLS_DIRECTORY/lib/${TOOL}.pl"
+   echo "      Is \$TOOLS_DIRECTORY set correctly?"
+   echo
+   exit 1
+fi
+
+if [ `uname | fgrep -c _NT` -eq 1 ]
+then
+   $TOOLS_DIRECTORY/ActivePerl/bin/perl $TOOLS_DIRECTORY/lib/${TOOL}.pl "$@"
+else
+   if [ -x "/usr/bin/perl5" ]
+   then
+      #
+      # Default perl on DG/UX is perl4, so we call perl5 explicitly
+      # and use some updated libraries.
+      #
+      PERL5LIB="$TOOLS_DIRECTORY/lib/DGUX"
+      export PERL5LIB
+      /usr/bin/perl5 $TOOLS_DIRECTORY/lib/${TOOL}.pl "$@"
+   elif [ -x "/usr/local/SOLARIS/bin/perl" ]
+   then
+      #
+      # Include some libraries required for Solaris (Sparc)
+      #
+      PERL5LIB="$TOOLS_DIRECTORY/lib/SOLARIS"
+      export PERL5LIB
+      /usr/local/SOLARIS/bin/perl $TOOLS_DIRECTORY/lib/${TOOL}.pl "$@"
+   elif [ `uname | fgrep -c SunOS` -eq 1 ]
+   then
+      #
+      # Include some libraries required for Solaris (Sparc)
+      #
+      PERL5LIB="$TOOLS_DIRECTORY/lib/SOLARIS"
+      export PERL5LIB
+      perl $TOOLS_DIRECTORY/lib/${TOOL}.pl "$@"
+   else
+      perl $TOOLS_DIRECTORY/lib/${TOOL}.pl "$@"
+   fi
+fi

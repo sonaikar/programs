@@ -1,0 +1,913 @@
+#!/usr/bin/perl
+#
+# File: verify_str
+#
+# Description: Run by CVSROOT/verifymsg to verify the log message
+#              (the checkin comment).
+#
+# This script verifies that the log message contains valid PT
+# info, enforces any PT phase restrictions, and validates other
+# required information.
+# 
+# Stopship mode is currently only supported by STRs.
+#
+# Invoked from verifymsg as:
+#
+# verify_str --branch=${=BRANCH} --module=${=MODULE} --user=${USER} \
+#            --debug_level=${=DEBUG_LEVEL} --birt_no_str=${=BIRT_NO_STR}
+#            --birt_cvsrecon=${=BIRT_CVSRECON}
+#
+# CVS will pass a path to the log message file as the final argument
+# to this script.
+#
+
+BEGIN {
+if (! defined($ENV{'TOOLS_DIRECTORY'}))
+   {
+   $ENV{'TOOLS_DIRECTORY'} = "/pdd/cvs";
+   }
+$ENV{'TOOLS_DIRECTORY'} = "/bdd/birt/wwilliams/remedy/tools";
+#$ENV{'TOOLS_DIRECTORY'} = "/udd/rtp/hermoc/tools";
+}
+
+use lib "$ENV{'TOOLS_DIRECTORY'}/lib";
+
+use Birt::Focus qw ( is_official_branch 
+		     is_valid_focus
+		     get_focusinfo_field
+                     get_focus
+		   );
+use Birt::CVS qw ( $CVS_ADMIN_EMAIL
+                   $SERVER_TOOL_PATH_FOR_UNIX
+                   allow_exception
+                   log_exception
+                   parse_commit_message
+                   dump_commitinfo
+                   );
+use Birt::DIMS qw(dims_lookup);   # This is a DIMS module
+use Birt::nsg_Remedy qw( remedy_full_text );
+
+use strict;
+use File::Basename;
+use Getopt::Long;
+
+#
+# All messages must go to STDERR or PushOK will not display them.
+#
+select(STDERR);
+
+$|=1;
+
+my($debug_level,      # turns debug on (1,2,3) or off (0) - use checkin -D ?
+                      # to get an explanation of debugging levels
+   $BRANCH,           # the branch
+   $MODULE,           # the module
+   $BIRT_NO_STR,      # allows checkins without an STR when set to 1
+   $BIRT_CVSRECON,    # allows checkins without a Status or Verification Procedure
+   $login             # the developer's userid
+);
+
+GetOptions(
+        "debug_level:i"         =>      \$debug_level,
+        "branch:s"              =>      \$BRANCH,               # required
+        "module:s"              =>      \$MODULE,               # required
+        "birt_no_str:i"         =>      \$BIRT_NO_STR,
+        "birt_cvsrecon:i"       =>      \$BIRT_CVSRECON,
+        "user=s"                =>      \$login,                # required
+         );
+
+my($debug) = 0;
+if ( $debug_level & 2 )
+   {
+   $debug = 1;
+   }
+
+my($progname) = &basename($0);
+
+print "\nRUNNING $progname\n\n" if ($debug);
+
+$ENV{'PATH'} = "$SERVER_TOOL_PATH_FOR_UNIX";
+print "PATH is $ENV{'PATH'}\n" if ($debug);
+
+###
+my ($LogFile);
+$LogFile = "/bdd/birt/wwilliams/tmp/verify_str.log_$$";
+
+open(LOGFILE, ">$LogFile");
+print LOGFILE "\n**********************************************************\n" if ($debug);
+print LOGFILE "using PERSONAL VERIFYY_STR\n\n" if ($debug);
+print LOGFILE "TOOLS: $ENV{'TOOLS_DIRECTORY'}\n" if ($debug); 
+#
+# Validate required parameters.
+#
+if ($BRANCH =~ /^$/) {
+   print "\n";
+   print "ERROR ($progname): Branch not specified.  Contact $CVS_ADMIN_EMAIL.\n";
+   print "\n";
+   exit (1);
+}
+
+if ($MODULE =~ /^$/) {
+   print "\n";
+   print "ERROR ($progname): Module not specified.  Contact $CVS_ADMIN_EMAIL.\n";
+   print "\n";
+   exit (1);
+}
+
+if (defined($login))
+   {
+   $login =~ s!\@.*!!;
+   }
+else
+   {
+    print "\n";
+    print "ERROR ($progname): Unable to determine your userid.  Contact $CVS_ADMIN_EMAIL.\n";
+    print "\n";
+    exit (1);
+    }
+
+#
+# Only respect exceptions for privileged users
+#
+if ( ! allow_exception($login) )
+   {
+   $BIRT_NO_STR = 0;
+   $BIRT_CVSRECON = 0;
+   }
+
+#
+# Always use exceptions in these cases.  This is required since these modules
+# do not follow the pt_phase setting for their focus.  If this becomes the norm,
+# we could extend the pt_phase value to be a hash keyed by module name to allow
+# for different pt_phases per module in a focus.
+#
+# The CVSROOT entry is required to allow access changes via the web interface.
+#
+# NOTE: These exceptions must be made in each tools/server/bin script that
+#       requires the exception.
+#
+if (("$MODULE" eq "CVSROOT") or ("$MODULE" eq "Dart_tools"))
+   {
+   $BIRT_NO_STR = 1;
+   }
+
+print "User is $login\n" if ($debug);
+print "BRANCH is $BRANCH\n" if ($debug);
+print "MODULE is $MODULE\n" if ($debug);
+
+#
+# Foyers are exempted from all message and STR verifications.
+#
+if (! is_official_branch($BRANCH, $MODULE))
+   {
+   print "Unofficial branch...skipping PT checks\n" if ($debug);
+   exit (0);
+   }
+
+#
+# BIRT_NO_STR exception prevents any log message verification.
+#
+if ($BIRT_NO_STR == 1)
+   {
+   print "NO_STR exception granted.\n";
+   log_exception("NO_STR", $BRANCH, $login);
+   exit (0);
+   }
+
+#
+# BIRT_CVSRECON exception removes requirement of Status and Verification Procedure
+#
+if ($BIRT_CVSRECON == 1)
+   {
+   print "CVSRECON exception granted.\n";
+   log_exception("CVSRECON", $BRANCH, $login);
+   }
+#
+# Set the focus based on the BRANCH.
+#
+my($focus);
+
+$focus = get_focus($MODULE, $BRANCH);
+
+if ( ! is_valid_focus($focus, $BRANCH, $MODULE)) {
+   print "ERROR ($progname):  $focus, $BRANCH, $MODULE is an invalid focus combination\n";
+   exit (1);
+}
+
+#
+# Read in log message.
+#
+my ($verify_status) = 0;
+my ($reviewer_comment_required, $unittest_comment_required, $checkin_comment_required);
+my (@strs, @incidents, @issues);
+
+my($commit_message) = join "", (<>);
+
+if ($commit_message =~ m/#/s)
+   {
+   #
+   # A comment that includes a '#' may result in the rest of the
+   # comment being ignored.
+   #
+   print "\n";
+   print "\nERROR ($progname): The '#' character is not allowed in\n";
+   print "      checkin comments since it is not handled correctly\n";
+   print "      by all product tracking systems.  Please try your\n";
+   print "      checkin again without the '#' character.\n";
+   print "\n";
+   $verify_status = 1;
+   }
+
+foreach (split /\n/, $commit_message)
+   {
+   if ( ( (/===/) || (/---/) ) && (! /^CVS:/) )
+      {
+      print "\n";
+      print "\nERROR ($progname): Strings of 3 or more equals (=) or hyphens (-)\n";
+      print "      are not allowed in checkin comments.  Please do not\n";
+      print "      include diff output in the comment text.  A simple\n";
+      print "      sentence or two of explanation will suffice.\n";
+      print "\n";
+      print "      Offending line: $_\n";
+      print "\n";
+      $verify_status = 1;
+      }
+   }
+
+#
+# Parse the commit message into fields
+#
+my(%commitinfo) = parse_commit_message($commit_message);
+if ($debug)
+   {
+   print "Commit Message Parsed Fields:\n";
+   print "-----------------------------\n";
+   print dump_commitinfo(%commitinfo);
+   print "\n\n";
+   }
+
+#
+# Enforce reviewer.
+#
+$reviewer_comment_required = get_focusinfo_field($focus, $BRANCH, 'require_reviewer_comment');
+
+if ( ($reviewer_comment_required == 1) && ($commitinfo{'Reviewed by'} !~ /\S+/) )
+   {
+   print "\n";
+   print "\nERROR ($progname): No reviewer(s) found on 'Reviewed by:' line.\n";
+   print "      Checkins require a code review.\n\n";
+   print "\n";
+   $verify_status = 1;
+   }
+
+#
+# Enforce unit testing.
+#
+$unittest_comment_required = get_focusinfo_field($focus, $BRANCH, 'require_unittest_comment');
+
+if ( ($unittest_comment_required == 1) && ($commitinfo{'Unit tested on'} !~ /\S+/) )
+   {
+   print "\n";
+   print "\nERROR ($progname): No unit testing information found on 'Unit test' line.\n";
+   print "      Checkins require indication of unit testing.\n\n";
+   print "\n";
+   $verify_status = 1;
+   }
+
+#
+# Require a comment.
+#
+$checkin_comment_required = get_focusinfo_field($focus, $BRANCH, 'require_checkin_comment');
+
+if ( ($checkin_comment_required == 1) && ($commitinfo{'Comment'} !~ /\S+/s) )
+   {
+   print "\n";
+   print "\nERROR ($progname): No comments were found.\n";
+   print "      A concise checkin comment is required.\n\n";
+   print "\n";
+   $verify_status = 1;
+   }
+
+#
+# Set the pt_phase based on the BRANCH.
+#
+my($pt_phase, $pt_phase_metadata);
+
+($pt_phase, $pt_phase_metadata) = split /\//, get_focusinfo_field($focus, $BRANCH, 'pt_phase');
+print "Phase is $pt_phase\n" if ($debug);
+print "Phase Metadata is $pt_phase_metadata\n" if ($debug);
+
+###
+print "Phase Metadata is $pt_phase_metadata\n" if ($debug);
+print "Phase is $pt_phase\n" if ($debug);
+
+
+#
+# The rest of the file is only executed when $pt_phase != "none".
+#
+if ($pt_phase eq "none") {
+    print "  No PT phase restrictions.\n" if($debug);
+    exit ($verify_status);
+} 
+
+#
+# 'noautoprop' PT Phase
+#
+if ($pt_phase eq "noautoprop")
+   {
+   if (defined($commitinfo{'Automatic Propagation'}))
+      {
+      print "\nERROR ($progname): This checkin is an automatic propagation, but this branch\n";
+      print "      does not allow automatic propagations into it.\n";
+      $verify_status = 1;
+      }
+   }
+
+#
+# 'autoproponly' PT Phase
+#
+if ($pt_phase eq "autoproponly")
+   {
+   if (! defined($commitinfo{'Automatic Propagation'}))
+      {
+      print "\nERROR ($progname): This checkin is not an automatic propagation, but this branch\n";
+      print "      only allows automatic propagations into it.\n";
+      $verify_status = 1;
+      }
+   }
+
+#
+# Require an STR, DIMS or Remedy number since PT phase is not "none".
+# Note that we don't restrict which PT info is entered, just that one
+# of the supported systems be used.
+#
+if (! defined($commitinfo{'Issue Number'}) && 
+    ! defined($commitinfo{'Task Number'}) &&
+    ! defined($commitinfo{'DIMS'}) &&
+    ! defined($commitinfo{'STR'}))
+   {
+      print "\n";
+      print "\nERROR ($progname): No STR, DIMS, or Remedy Issue/Task\n";
+      print "      number found.  Please correct the log entry.  Some\n";
+      print "      form of Product Tracking information is required.\n\n";
+      print "\n";
+      $verify_status = 1;
+   }
+
+#
+# Areas affected can be specified at any time, as well as being
+# enforced under certain situations.  Thus, if it is specified,
+# validate syntax.  This applies only to Remedy issues and tasks.
+#
+if (defined($commitinfo{'Issue Number'}) or defined($commitinfo{'Task Number'}))
+   {
+   if ($commitinfo{'Areas Affected'} and "$commitinfo{'Areas Affected'}" =~ /[^DRENUTS ]/)
+      {
+      print "\n";
+      print "\nERROR ($progname): The syntax of the 'Areas Affected' entry is\n";
+      print "      invalid.  The syntax rules are as follows:\n";
+      print "\n";
+      print "      1.  Entries must be one or more of the following: D, R, E, N, U, T, S\n";
+      print "      2.  Entries must be in upper case\n";
+      print "      3.  Multiple letters may be separated by spaces or by no space\n";
+      print "\n";
+      $verify_status = 1;
+      }
+   }
+
+#############################
+# DIMS implementation.
+#############################
+
+@incidents = @{ $commitinfo{'DIMS'} } if (defined($commitinfo{'DIMS'}));
+if (@incidents)
+ {
+  print "Validating DIMS Incident(s):\n";
+  my($defect, $result);
+
+  foreach $defect (@incidents)
+   {
+      print "   $defect...";
+      print "\n" if ($debug);
+
+   # 
+   # Verify that the DIMs incident exist and is open, new or isn't CLOSED.
+   # Currently, restricted mode is not supported by DIMS. 11-26-01
+   #
+    if ($pt_phase eq "restricted") {
+         print "$pt_phase phase is not supported by DIMS\n";
+    } 
+
+      $result = DIMS::dims_lookup( $defect );
+
+      if ( $result !~ m/\d{15}/ )
+        {
+          print "\nERROR ($progname): Unable to find $defect.\n";
+	  print "      Is this a valid DIMS incident?\n";
+	  print "      Is the DIMS database available?\n";
+          print "\n";
+          $verify_status = 1;
+          next;
+        };
+     print "OK\n";
+   }  # end foreach
+}
+
+#############################
+# Remedy issue implementation.
+#############################
+
+@issues = @{ $commitinfo{'Issue Number'} } if (defined($commitinfo{'Issue Number'}));
+if ($BIRT_CVSRECON != 1)
+   {
+   if (@issues)
+      {
+      print "Validating Remedy issue(s):\n";
+      my($issue);
+      my(%ar_info);
+
+      foreach $issue (@issues)
+         {
+         print "   $issue...";
+         print "\n" if ($debug);
+
+         #
+         # Validate the syntax for all issues given.  Issues must be purely
+         # numerical.  This is enforced due to the need to differentiate
+         # from the task schema.
+         #
+         if ($issue !~ /^[0-9]+$/)
+            {
+            print "\n";
+            print "\nERROR ($progname): Invalid issue syntax for '$issue'.  Issues\n";
+            print "      must be completely numeric.  Note: this could be caused by\n";
+            print "      putting a task (TSK) number on the 'Issue Number' line.\n\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+
+         #
+         # Enforce that a status is entered for issues.
+         #
+         if ( "$commitinfo{'Status'}" !~ /^test[-_ ]?ready/i and
+              "$commitinfo{'Status'}" !~ /^in[-_ ]?progress/i and
+              "$commitinfo{'Status'}" !~ /^i/i and
+              "$commitinfo{'Status'}" !~ /^t/i )
+            {
+            print "\n";
+            print "\nERROR ($progname): No valid Status found. A 'Status'\n";
+            print "      of 'In-progress' or 'Test-ready' is required\n";
+            print "      for all issues (tasks do not require this).\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+
+         #
+         # Verify that the issue exists in a valid status.
+         # This applies to all PT phases except 'none'
+         # (which we've already accounted for).
+         #
+         %ar_info = NSGREMEDY::remedy_full_text($issue);
+
+         print "Current Issue Status = $ar_info{'Status'}\n" if ( $debug );
+
+         if (! $ar_info{'Status'})
+            {
+            print "\nERROR ($progname): Unable to query issue $issue.\n";
+            print "      This might be an invalid issue, or the issue\n";
+            print "      database may not be available.\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+         elsif ($ar_info{'Status'} =~ /^fixed$/i and
+                $ar_info{'Status Details'} !~ /^test[-_ ]?ready/i )
+            {
+            print "\nERROR ($progname): Issue $issue is currently in the\n"; 
+            print "     $ar_info{'Status'} -> $ar_info{'Status Details'} state.\n";
+            print "     A 'fixed' issue cannot be used for checkin unless it\n";
+            print "     has a status detail of 'test-ready'.\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+         elsif ($ar_info{'Status'} =~ /^(closed)|(dismissed)$/i)
+            {
+            print "\nERROR ($progname): This issue is currently in the\n"; 
+            print "     $ar_info{'Status'} state.  An issue cannot be\n";
+            print "     used for checkin if it is Closed or Dismissed.\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+
+         #
+         # Require a verification procedure comment and areas affected
+         # entry if "Status" is set to "Test-ready".
+         #
+         if ( "$commitinfo{'Status'}" =~ /^test[-_ ]?ready/i or
+              "$commitinfo{'Status'}" =~ /^t/i )
+            {
+            if ( "$commitinfo{'Verification Procedure Comment'}" !~ /\S+/ )
+               {
+               print "\n";
+               print "\nERROR ($progname): No verification procedure comments were found.\n";
+               print "      A verification procedure comment is required when the status\n";
+               print "      of an issue is changed to Test-ready.\n";
+               print "\n";
+               $verify_status = 1;
+               }
+
+            if ( "$commitinfo{'Areas Affected'}" !~ /\S+/ )
+               {
+               print "\n";
+               print "\nERROR ($progname): Entering an issue status of 'Test-ready'\n";
+               print "      requires at least one valid entry for 'Areas Affected'.\n";
+               print "      This is required for all issues, no exception.\n";
+               print "\n";
+               $verify_status = 1;
+               }
+            }
+
+         #
+         #
+         # 'restricted','noautoprop','autoproponly' PT Phases
+         #
+         if ((defined($pt_phase_metadata)) and
+             ($pt_phase =~ /^(restricted)|(noautoprop)|(autoproponly)$/))
+            {
+            print "Keywords = $ar_info{'Keywords'}\n" if ( $debug );
+
+print LOGFILE "VERYFY-STR branch: $BRANCH\n" if ($debug);
+print LOGFILE "VERYFY-STR pt_phase: $pt_phase\n" if ($debug);
+print LOGFILE "VERYFY-STR ar_info Keywords (from AR) = $ar_info{'Keywords'}\n" if ($debug);
+print LOGFILE "VERYFY-STR pt_phase_metadata: ${pt_phase_metadata}<=\n" if ($debug);
+
+            my($pt_phase_first_field, @keywords_list, $keyw, $Condition_A, $Condition_B, $Condition_C, $Condition_D);
+            $Condition_A = "";
+            $Condition_B = "";
+            $Condition_C = "";
+            $Condition_D = "";
+            
+            ($pt_phase_first_field, @keywords_list) = split /\|/, $pt_phase_metadata;
+
+print LOGFILE "VERYFY-STR pt_phase_first_field: $pt_phase_first_field\n" if ($debug);
+print LOGFILE "VERYFY-STR keywords_list #1: $keywords_list[0]\n" if ($debug);
+print LOGFILE "VERYFY-STR keywords_list #2: $keywords_list[1]\n" if ($debug);
+
+            #
+            # Auto propagation checkin with keywords with restricted/autoproponly|KEYWS
+            # Condition_A
+            #
+            if (defined($commitinfo{'Automatic Propagation'}) && "$pt_phase_first_field" eq "autoproponly")
+               {
+               print LOGFILE "VERYFY-STR inside AA Automatic Propagation and autoproponly \n" if ($debug);
+               $pt_phase_metadata = "";
+               $Condition_A = 1;
+               }
+            #
+            # developer is trying to check directly into branch with restricted/KEYWS
+            # Condition_B
+            #
+            elsif (("$pt_phase" eq "restricted") && ("$pt_phase_first_field" ne "autoproponly") && (!defined($commitinfo{'Automatic Propagation'})) )
+               {
+               print LOGFILE "VERYFY-STR inside BB  pt_phase eq restricted and pt_phase_first_field ne autoproponly  \n" if ($debug);
+               $Condition_B = 1;
+               print LOGFILE "VERYFY-STR inside BB pt_phase_metadata: $pt_phase_metadata \n" if ($debug);
+               }
+            #
+            # developer is trying to checkin into branch with restricted/autoproponly|KEYWS 
+            # Condition_C
+            #
+            elsif ( ("$pt_phase" eq "restricted") && 
+                    ("$pt_phase_first_field" eq "autoproponly") && 
+                    (!defined($commitinfo{'Automatic Propagation'})) )
+               {
+               print LOGFILE "VERYFY-STR inside CC \n" if ($debug);
+               # We rebuild the $pt_phase_metadata keyword list without the first keyword: autoproponly
+               $pt_phase_metadata = "";
+               foreach $keyw (@keywords_list)
+                 {
+                 $pt_phase_metadata .= "$keyw"."|";
+                 }
+               # Remove the last | of the srtring
+               $pt_phase_metadata =~ s/\|$//;
+               $Condition_C = 1;
+               }
+            elsif (("$pt_phase" eq "restricted") && ("$pt_phase_first_field" ne "autoproponly") && (defined($commitinfo{'Automatic Propagation'})) )
+               {
+               $Condition_D = 1;
+               print LOGFILE "VERYFY-STR inside  DD pt_phase_metadata: $pt_phase_metadata \n" if ($debug);
+               }
+
+print LOGFILE "after loop VERYFY-STR pt_phase_metadata: $pt_phase_metadata<=\n" if ($debug);
+print LOGFILE "after loop ar_info_Keywords: $ar_info{'Keywords'}<=\n" if ($debug);
+
+           #
+           # if (! (defined($commitinfo{'Automatic Propagation'}) && "$pt_phase_first_field" eq "autoproponly"))
+print LOGFILE "VERYFY-STR Condition_A: $Condition_A - Condition_B: $Condition_B - Condition_C: $Condition_C Condition_D: $Condition_D\n" if ($debug);
+            if ( $Condition_B || $Condition_C || $Condition_D)
+               {
+            if ("$ar_info{'Keywords'}" !~ /\b($pt_phase_metadata)\b/)
+               {
+               print "\nERROR ($progname): This branch is in $pt_phase phase and requires a\n";
+               print "      '$pt_phase_metadata' keyword, but issue $issue is not marked\n";
+               print "      as such.  Contact Program Management for approval.\n";
+print LOGFILE "VERYFY-STR ar_info_Keywords: $ar_info{'Keywords'}\n" if ($debug);
+               $verify_status = 1;
+               next;
+               }
+               }
+            }
+
+         #
+         # Checkins are not allowed into a Child Issue therefore we need to verify that 
+         # the Issue is not a child.
+         #
+
+         if ($ar_info{'Classification'} =~ /^Child$/)
+            {
+            print "\n\nERROR ($progname): Issue $issue is a Child of Issue $ar_info{'Prime Bug #'}.\n";
+            print "     A Child Issue cannot be used to checkin.  Update the checkin comment\n";
+            print "     using the Parent Issue ($ar_info{'Prime Bug #'}) as the Issue Number and resubmit the checkin.\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+
+         #
+         # 'Open' PT Phase
+         #               
+         # No additional restrictions
+         #
+         print "OK\n";
+
+         }  # end foreach
+      }
+   }
+
+#############################
+# Remedy task implementation.
+#############################
+
+my(@tasks) = @{ $commitinfo{'Task Number'} } if (defined($commitinfo{'Task Number'}));
+if ($BIRT_CVSRECON != 1)
+   {
+   if (@tasks)
+      {
+      print "Validating Remedy task(s):\n";
+      my($task);
+      my(%ar_info);
+
+      foreach $task (@tasks)
+         {
+         print "   $task...";
+         print "\n" if ($debug);
+
+         #
+         # Validate the syntax for all tasks given.  Tasks must be given as 'TSK'
+         # followed by numbers (no spaces).  This is enforced due to the need to
+         # differentiate from the issue schema.
+         #
+         if ($task !~ /^TSK[0-9]+$/i)
+            {
+            print "\n";
+            print "\nERROR ($progname): Invalid syntax for task number '$task'. All\n";
+            print "      tasks must be given as 'TSK' followed by the task number\n";
+            print "      (no spaces).  Note: this could be caused by putting an issue\n";
+            print "      number on the 'Task Number' line.\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+
+         #
+         # Verify that the task exists in a valid status.  The only invalid status
+         # is "Completed".
+         #
+         %ar_info = NSGREMEDY::remedy_full_text($task);
+
+         print "Current Task Status = $ar_info{'Status'}\n" if ( $debug );
+
+         if (! $ar_info{'Status'})
+            {
+            print "\nERROR ($progname): Unable to query task $task.  This\n";
+            print "      might be an invalid task number, or the task\n";
+            print "      database may not be available.\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+
+         #
+         # Enforce 'Task Complete' syntax; it can be Y, N, or not specified
+         # (the latter meaning "no change to this field").
+         #
+         if ( defined($commitinfo{'Task Complete'}) and
+             "$commitinfo{'Task Complete'}" !~ /^(Y|N|())$/i )
+            {
+            print "\n";
+            print "\nERROR ($progname): Invalid answer for 'Task Complete?'.  A\n";
+            print "      value of Y (yes), N (no), or an empty string (indicating\n";
+            print "      no change) is required for this field for all tasks.\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+
+         #
+         # Require a verification procedure comment and areas affected
+         # entry if "Task Complete" is set to "Y".
+         #
+         # FIXME:  We had to hardcode a "spec" focus exception to this
+         #         enforcement as a temporary measure.  The real problem
+         #         is that we need to allow for exceptions based on
+         #         something more general like focus/branch/module/template.
+         #
+         # Cvsrecon has exception here.
+         #
+         if ( "$commitinfo{'Task Complete'}" =~ /^Y$/i and $focus !~ m/^spec$/ )
+            {
+            if ( "$commitinfo{'Verification Procedure Comment'}" !~ /\S+/ )
+               {
+               print "\n";
+               print "\nERROR ($progname): No verification procedure comments were found.\n";
+               print "      A verification procedure comment is required when a task is\n";
+               print "      marked as completed.\n";
+               print "\n";
+               $verify_status = 1;
+               }
+
+            if ( "$commitinfo{'Areas Affected'}" !~ /\S+/ )
+               {
+               print "\n";
+               print "\nERROR ($progname): Marking a task as completed requires at\n";
+               print "      least one valid entry for 'Areas Affected'.  This is\n";
+               print "      required for all tasks, no exception.\n";
+               print "\n";
+               $verify_status = 1;
+               }
+            }
+
+         #
+         #
+         # 'restricted','noautoprop','autoproponly' PT Phases
+         #
+         if (defined($pt_phase_metadata) and
+            ($pt_phase =~ /^(restricted)|(noautoprop)|(autoproponly)$/i))
+            {
+            my(%feature_info) = NSGREMEDY::remedy_full_text($ar_info{'Feature Entry ID'});
+
+            print "Current Feature Parent Status = $feature_info{'Status'}\n" if ( $debug );
+
+            if (! $feature_info{'Status'})
+               {
+               print "\nERROR ($progname): Unable to query the parent feature\n";
+               print "      ($ar_info{'Feature Entry ID'}) of this task ($task).\n";
+               print "      This might be an invalid feature, or the feature\n";
+               print "      database may not be available.\n";
+               print "\n";
+               $verify_status = 1;
+               next;
+               }
+
+            print "Keywords = $feature_info{'Keywords'}\n" if ( $debug );
+
+            if ("$feature_info{'Keywords'}" !~ /\b($pt_phase_metadata)\b/)
+               {
+               print "\nERROR ($progname): This branch is in $pt_phase phase and requires\n";
+               print "      a '$pt_phase_metadata' keyword.  The parent feature\n";
+               print "      ($ar_info{'Feature Entry ID'}) of this task ($task) is not\n";
+               print "      marked as such.  Contact Program Management for approval.\n";
+               $verify_status = 1;
+               next;
+               }
+            }
+
+         #
+         # 'Open' PT Phase
+         #               
+         # No additional restrictions
+         #
+         print "OK\n";
+
+         }  # end foreach
+      }
+   }
+
+#############################
+# STRs implementation.
+#############################
+
+   #
+   # We only got one line of STR numbers.  Now validate them.
+   # Validate each STR, checking phase.
+   #
+
+@strs = @{ $commitinfo{'STR'} } if (defined($commitinfo{'STR'}));
+if (@strs)
+ {
+   my($str, $url, $text, $str_canon, $state, $stopship, $str_num_only);
+   foreach $str (@strs) {
+      next if ($str eq ""); 
+      
+      print "STRs are: @strs\n" if ($debug);
+      print "Validating STR(s):\n";
+
+      print "   $str...";
+      print "\n" if ($debug);
+
+      $url="http://stonehenge.rtp.dg.com/cgi-bin/cvs-rep?spr=$str";
+      print "      Looking up $url\n" if ($debug);
+      $text=`lynx -dump $url`;
+
+      chomp($text);
+      $text =~ s/^\s+//;
+      $text =~ s/\s+$//;
+      ($str_canon, $state, $stopship) = split(/\s+/,$text,3);
+
+      if ($stopship =~ /(^\s*$)|\?/)
+         {
+         $stopship = "no";
+         }
+
+      print "         Canonical STR: $str_canon\n" if ($debug);
+      print "         STR State:     $state\n" if ($debug);
+      print "         Stopshipped?:  $stopship\n" if ($debug);
+
+      #
+      # Verify the STR is a valid number.
+      #
+      if ( ("$str_canon" !~ /^\s*$/) &&
+           ("$state" !~ /^\s*$/) &&
+           ("$stopship" !~ /^\s*$/) )
+         {
+         #
+         # Do a simple check to make sure that $str_canon isn't junk.
+         #
+         $str_num_only=$str;
+         $str_num_only=~s/-0$//;
+         $str_num_only=~s/[^\d]//g;
+         $str_num_only=~s/^0+//;
+         if ( "$str_canon" !~ /$str_num_only/ )
+            {
+            print "\n";
+            print "\nERROR ($progname): Unable to find '$str'.\n";
+            print "      Is this a valid STR number?\n";
+            print "      Is stonehenge PT reporting available?  Did you\n";
+            print "      include comment text on the 'STR' line?\n\n";
+            print "\n";
+            $verify_status = 1;
+            next;
+            }
+         }
+      else
+         {
+         print "\n";
+         print "\nERROR ($progname): Unable to find '$str'.\n";
+         print "      Is this a valid STR number?\n";
+         print "      Is stonehenge PT reporting available?  Did you\n";
+         print "      include comment text on the 'STR' line?\n\n";
+         print "\n";
+         $verify_status = 1;
+         next;
+         }
+      
+      #
+      # Verify the STR is not RESOLVED REJECTED DUPLICATE or CLOSED
+      #
+      if ( "$state" =~ "RESOLVED|REJECTED|DUPLICATE|CLOSED" )
+         {
+         print "\n";
+         print "\nERROR ($progname): Commits not allowed to STRs in state $state.\n\n";
+         print "\n";
+         $verify_status = 1;
+         next;
+         }
+      
+      if ( "$pt_phase" eq "restricted" )
+         {
+         #
+         # If in restricted mode, verify the STR is marked STOPSHIP
+         #
+            if ( "$stopship" eq "no" )
+               {
+               print "\n";
+               print "\nERROR ($progname): STR $str_canon is not marked 'STOPSHIP' but\n";
+               print "      $BRANCH is in $pt_phase phase.  ESCALATE the\n";
+               print "      STR to Program Management and request a STOPSHIP.\n\n";
+               print "\n";
+               $verify_status = 1;
+               next;
+               }
+         }
+
+      print "OK\n";
+      } # end foreach str
+ }
+
+print "\n";
+
+exit ($verify_status);

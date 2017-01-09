@@ -1,0 +1,247 @@
+# File:    arsuitekit_patch.bom
+#
+# Bill of Materials for AR System 8.8.00 Patch
+#
+# This file serves as input to a script that creates and populates
+# the patch staging. Patch is cummulative.
+#
+# Format of BOM file:
+#
+#    Creating directory structure
+#
+#        d|<Destination location>
+#
+#    Copying files from the rbuild IA staging area to the destination area. Destination
+#    area is the location on the target machine where ARSuiteKit is installed.
+#
+#        f|<Source location in build>|<Destination location>
+#
+#    where:
+#
+#        The source location can use wildcards.  Wildcard only works on files.
+#        If you use wildcards, then the destination location should be a directory name.
+#
+#    Some sections of this BOM are only meant for specific architectures.
+#
+#       ARCH=arch-type(s)
+#
+#       where:
+#       arch-type is windows linux solaris aix hpux-itanium
+#       Lines following an ARCH qualifier will only be processed
+#       if the arch-type matches that specified at the command line
+#
+#       For example,
+#
+#          ARCH=windows linux solaris aix hpux-itanium
+#
+# Base Source Location:       $BUILD_BASE/stage
+# Base Destination Location:  $BUILD_BASE/patch_stage
+#
+# pluginsvr - is part of the arserver staging
+#
+# CHANGES HISTORY:
+#   
+
+#************************************************************************************************************
+#						SERVER
+#************************************************************************************************************
+
+ARCH=windows
+
+# If destination is a directory, create the directory first
+d|iastage.$ARCH/ARSystem
+d|iastage.$ARCH/ARSystem/arserver/
+
+#	armonitor executable is only patched on windows
+f|iastage.$ARCH/arsuitekit/arserver/$ARCH/armonitor.exe|iastage.$ARCH/ARSystem/arserver/armonitor.exe
+
+# arserver executable
+# win32
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/mssql/arserver.exe|iastage.$ARCH/ARSystem/win32/mssql/arserver.exe
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/oracle/arserver.exe|iastage.$ARCH/ARSystem/win32/oracle/arserver.exe
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/db2/arserver.exe|iastage.$ARCH/ARSystem/win32/db2/arserver.exe
+
+# win64
+f|iastage.$ARCH/arsuitekit/arserver/$ARCH/arserver.exe|iastage.$ARCH/ARSystem/arserver/arserver.exe
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/win64/oracle/arserver.exe|iastage.$ARCH/ARSystem/arserver/win64/oracle/arserver.exe
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/win64/db2/arserver.exe|iastage.$ARCH/ARSystem/arserver/win64/db2/arserver.exe
+
+# linux
+#ARCH=linux
+#d|iastage.$ARCH/ARSystem
+#d|iastage.$ARCH/ARSystem/arserver
+
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/oracle/arserverd|iastage.$ARCH/ARSystem/arserver/oracle/arserverd
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/db2/arserverd|iastage.$ARCH/ARSystem/arserver/db2/arserverd
+
+# aix solaris
+#ARCH=aix solaris
+#d|iastage.$ARCH/ARSystem
+#d|iastage.$ARCH/ARSystem/arserver
+
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/oracle/arserverd|iastage.$ARCH/ARSystem/arserver/oracle/arserverd
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/db2/arserverd|iastage.$ARCH/ARSystem/arserver/db2/arserverd
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/sybase/arserverd|iastage.$ARCH/ARSystem/arserver/sybase/arserverd
+
+# hpux-itanium
+#ARCH=hpux-itanium
+#d|iastage.$ARCH/ARSystem
+#d|iastage.$ARCH/ARSystem/arserver
+
+#f|iastage.$ARCH/arsuitekit/arserver/hpia64/oracle/arserverd|iastage.$ARCH/ARSystem/arserver/oracle/arserverd
+#f|iastage.$ARCH/arsuitekit/arserver/hpia64/db2/arserverd|iastage.$ARCH/ARSystem/arserver/db2/arserverd
+#f|iastage.$ARCH/arsuitekit/arserver/hpia64/sybase/arserverd|iastage.$ARCH/ARSystem/arserver/sybase/arserverd
+
+# arapi80_build001.dll
+# If this dll is patched, it needs to be replaced under all locations found in the target system
+#./arapi80_build001.dll
+#./Arserver/api/lib/arapi80_build001.dll
+#./midtier/WEB-INF/lib/arapi88_build001.dll
+#./pluginsvr/arapi80_build001.dll
+
+# Only need to get the source file from one location under the iastage and use that to populate all destinations
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/arapi80_build001.dll|iastage.$ARCH/ARSystem/arapi80_build001.dll
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/arapi80_build001.dll|iastage.$ARCH/ARSystem/Arserver/api/lib/arapi80_build001.dll
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/arapi80_build001.dll|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/arapi88_build001.dll
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/arapi80_build001.dll|iastage.$ARCH/ARSystem/pluginsvr/arapi80_build001.dll
+
+# arapi80_build001.jar
+#ARCH=windows
+#d|iastage.$ARCH/ARSystem/arserver/Arserver/api/lib
+#d|iastage.$ARCH/ARSystem/approval/bin
+#d|iastage.$ARCH/ARSystem/AREmail
+#d|iastage.$ARCH/ARSystem/diserver/data-integration/libext
+#d|iastage.$ARCH/ARSystem/flashboards
+#d|iastage.$ARCH/ARSystem/pluginsvr
+#d|iastage.$ARCH/ARSystem/pluginsvr/excelgenerator/lib
+
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/Arserver/api/lib/arapi80_build001.jar|iastage.$ARCH/ARSystem/arserver/Arserver/api/lib/arapi80_build001.jar
+
+# ServerAdmin.dll
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/ServerAdmin.dll|iastage.$ARCH/ARSystem/arserver/ServerAdmin.dll
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/ServerAdmin.dll|iastage.$ARCH/ARSystem/arserver/Arserver/plugins/serveradmin/winnt/ServerAdmin.dll
+
+# ServerAdmin.* libraries on Linux and Unix
+#ARCH=linux solaris
+#d|iastage.$ARCH/ARSystem/arserver/bin
+#d|iastage.$ARCH/ARSystem/arserver/plugins/serveradmin/$ARCH
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/bin/ServerAdmin.so|iastage.$ARCH/ARSystem/arserver/bin/ServerAdmin.so
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/bin/ServerAdmin.so|iastage.$ARCH/ARSystem/arserver/plugins/serveradmin/$ARCH/ServerAdmin.so
+
+#ARCH=aix
+#d|iastage.$ARCH/ARSystem/arserver/bin
+#d|iastage.$ARCH/ARSystem/arserver/plugins/serveradmin/$ARCH
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/bin/ServerAdmin.a|iastage.$ARCH/ARSystem/arserver/bin/ServerAdmin.a
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/bin/ServerAdmin.a|iastage.$ARCH/ARSystem/arserver/plugins/serveradmin/$ARCH/ServerAdmin.a
+
+#ARCH=hpux-itanium
+#d|iastage.$ARCH/ARSystem/arserver/bin
+#d|iastage.$ARCH/ARSystem/arserver/plugins/serveradmin/hpia32
+#f|iastage.$ARCH/arsuitekit/arserver/hpia64/bin/ServerAdmin.sl|iastage.$ARCH/ARSystem/arserver/bin/ServerAdmin.sl
+#f|iastage.$ARCH/arsuitekit/arserver/hpia64/bin/ServerAdmin_hpia32.sl|iastage.$ARCH/ARSystem/arserver/plugins/serveradmin/hpia32/ServerAdmin_hpia32.sl
+#f|iastage.$ARCH/arsuitekit/arserver/hpia64/bin/ServerAdmin_hpia32.sl|iastage.$ARCH/ARSystem/arserver/bin/ServerAdmin_hpia32.sl
+
+
+# archgid executables on Windows and UNIX platforms 
+#ARCH=windows
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/archgid.exe|iastage.$ARCH/ARSystem/arserver/archgid.exe
+
+#ARCH=linux solaris aix
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/bin/archgid|iastage.$ARCH/ARSystem/arserver/bin/archgid
+
+#ARCH=hpux-itanium
+#f|iastage.$ARCH/arsuitekit/arserver/hpia64/bin/archgid|iastage.$ARCH/ARSystem/arserver/bin/archgid
+
+
+# Wildcard copy
+#d|iastage.$ARCH/ARSystem/win64/Arserver/api/lib
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/win64/Arserver/api/lib/*.*|iastage.$ARCH/ARSystem/win64/Arserver/api/lib
+
+# Definition files (*.def) are common to all platforms so get it from windows staging and populate all platforms
+#ARCH=windows linux
+#f|iastage.$ARCH/arsuitekit/arserver/$ARCH/Arserver/systemforms/en/AlertDelivRegistration.def|iastage.$ARCH/ARSystem/Arserver/systemforms/en/AlertDelivRegistration.def
+
+ARCH=windows
+d|iastage.$ARCH/ARSystem/arserver/lib
+r|iastage.$ARCH/arsuitekit/arserver/$ARCH/lib|iastage.$ARCH/ARSystem/arserver
+#************************************************************************************************************
+#					                             	ASSIGNMENT ENGINE
+#************************************************************************************************************
+
+ARCH=windows linux aix solaris hpux-itanium
+d|iastage.$ARCH/ARSystem/assignmentengine
+
+#ARCH=windows linux aix solaris
+#f|iastage.$ARCH/arsuitekit/assignmentengine/$ARCH/bin/araej80_build001.jar|iastage.$ARCH/ARSystem/assignmentengine/bin/araej80_build001.jar
+
+#ARCH=hpux-itanium
+#f|iastage.$ARCH/arsuitekit/assignmentengine/hpia32/bin/araej80_build001.jar|iastage.$ARCH/ARSystem/assignmentengine/bin/araej80_build001.jar
+#************************************************************************************************************
+#						                            EMAIL ENGINE
+#************************************************************************************************************
+
+ARCH=windows linux aix solaris hpux-itanium
+d|iastage.$ARCH/ARSystem/AREmail
+
+#ARCH=windows
+#f|iastage.$ARCH/arsuitekit/emailengine/$ARCH/emaildaemon.jar|iastage.$ARCH/ARSystem/AREmail/emaildaemon.jar
+
+#************************************************************************************************************
+#						                            Developer Studio
+#************************************************************************************************************
+
+ARCH=windows
+d|iastage.$ARCH/ARSystem/DeveloperStudio
+
+#************************************************************************************************************
+#						                            MIDTIER
+#************************************************************************************************************
+
+ARCH=windows linux aix solaris hpux-itanium
+d|iastage.$ARCH/ARSystem
+d|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib
+d|iastage.$ARCH/ARSystem/midtier/WEB-INF/classes
+d|iastage.$ARCH/ARSystem/midtier/resources
+d|iastage.$ARCH/ARSystem/midtier/shared
+d|iastage.$ARCH/ARSystem/midtier/tools/viewstat
+
+
+ARCH=windows linux
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/Config.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/Config.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/MidTier.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/MidTier.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/aspects.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/aspects.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/Support.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/Support.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/ReportCommon.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/ReportCommon.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/antisamy-1.5.3.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/antisamy-1.5.3.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/batik.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/batik.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/batik-css.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/batik-css.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/batik-util.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/batik-util.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/nekohtml.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/nekohtml.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/xerces_2_5_0.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/xerces_2_5_0.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/lib/xml-apis-ext.jar|iastage.$ARCH/ARSystem/midtier/WEB-INF/lib/xml-apis-ext.jar
+f|iastage.$ARCH/arsuitekit/midtier/$ARCH/WEB-INF/classes/antisamy.xml|iastage.$ARCH/ARSystem/midtier/WEB-INF/classes/antisamy.xml
+r|iastage.$ARCH/arsuitekit/midtier/$ARCH/resources|iastage.$ARCH/ARSystem/midtier
+r|iastage.$ARCH/arsuitekit/midtier/$ARCH/shared|iastage.$ARCH/ARSystem/midtier
+r|iastage.$ARCH/arsuitekit/midtier/$ARCH/tools/viewstat|iastage.$ARCH/ARSystem/midtier/tools
+
+#************************************************************************************************************
+#					                              APPROVAL
+#************************************************************************************************************
+
+ARCH=windows linux aix solaris hpux-itanium
+d|iastage.$ARCH/ARSystem/approval
+
+#ARCH=windows
+#f|iastage.$ARCH/arsuitekit/approvalserver/$ARCH/bin/arasj80_build001.jar|iastage.$ARCH/ARSystem/approval/bin/arasj80_build001.jar
+#f|iastage.$ARCH/arsuitekit/approvalserver/$ARCH/bin/aputils80_build001.jar|iastage.$ARCH/ARSystem/approval/bin/aputils80_build001.jar
+
+#ARCH=linux aix solaris
+#f|iastage.$ARCH/arsuitekit/approvalserver/$ARCH/bin/arasj80_build001.jar|iastage.$ARCH/ARSystem/approval/bin/arasj80_build001.jar
+#f|iastage.$ARCH/arsuitekit/approvalserver/$ARCH/bin/aputils80_build001.jar|iastage.$ARCH/ARSystem/approval/bin/aputils80_build001.jar
+#f|iastage.$ARCH/arsuitekit/approvalserver/$ARCH/bin/approval-utils.sh|iastage.$ARCH/ARSystem/approval/bin/approval-utils.sh
+
+#ARCH=hpux-itanium
+#f|iastage.$ARCH/arsuitekit/approvalserver/hpia32/bin/arasj80_build001.jar|iastage.$ARCH/ARSystem/approval/bin/arasj80_build001.jar
+#f|iastage.$ARCH/arsuitekit/approvalserver/hpia32/bin/aputils80_build001.jar|iastage.$ARCH/ARSystem/approval/bin/aputils80_build001.jar
+#f|iastage.$ARCH/arsuitekit/approvalserver/hpia32/bin/approval-utils.sh|iastage.$ARCH/ARSystem/approval/bin/approval-utils.sh
+
